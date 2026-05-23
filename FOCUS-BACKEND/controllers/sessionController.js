@@ -4,8 +4,11 @@ const StudySession = require(
 
 const startSession = async (req, res) => {
     try {
+
+        const userId = req.auth.userId;
+
         const session = await StudySession.create({
-            userId: req.user.id,
+            userId,
         });
 
         res.status(201).json({
@@ -13,16 +16,20 @@ const startSession = async (req, res) => {
             message: "Study session started",
             session,
         });
+
     } catch (error) {
+
         res.status(500).json({
             success: false,
             message: error.message,
         });
+
     }
 };
 
 const endSession = async (req, res) => {
     try {
+
         const { sessionId } = req.body;
 
         if (!sessionId) {
@@ -55,11 +62,14 @@ const endSession = async (req, res) => {
             message: "Study session ended",
             session,
         });
+
     } catch (error) {
+
         res.status(500).json({
             success: false,
             message: error.message,
         });
+
     }
 };
 

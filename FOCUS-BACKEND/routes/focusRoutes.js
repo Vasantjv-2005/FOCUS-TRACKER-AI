@@ -2,9 +2,9 @@ const express = require("express");
 
 const router = express.Router();
 
-const authMiddleware = require(
-    "../middleware/authMiddleware"
-);
+const {
+    requireAuth,
+} = require("@clerk/express");
 
 const {
     saveFocusData,
@@ -12,7 +12,7 @@ const {
 
 router.post(
     "/save",
-    authMiddleware,
+    requireAuth(),
     saveFocusData
 );
 
