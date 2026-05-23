@@ -6,6 +6,7 @@ const {
     sendWelcomeEmail,
 } = require("../services/emailService");
 
+
 router.post("/clerk", async (req, res) => {
 
     try {
@@ -27,6 +28,7 @@ router.post("/clerk", async (req, res) => {
                 email,
                 firstName
             );
+
         }
 
         res.status(200).json({
@@ -39,9 +41,13 @@ router.post("/clerk", async (req, res) => {
 
         res.status(500).json({
             success: false,
+            message:
+                "Webhook processing failed",
         });
 
     }
+
 });
+
 
 module.exports = router;
