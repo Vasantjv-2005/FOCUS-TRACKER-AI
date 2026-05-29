@@ -2,10 +2,10 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
     {
-        name: {
+        clerkId: {
             type: String,
             required: true,
-            trim: true,
+            unique: true,
         },
 
         email: {
@@ -13,12 +13,21 @@ const userSchema = new mongoose.Schema(
             required: true,
             unique: true,
             lowercase: true,
-            trim: true,
         },
 
-        password: {
+        firstName: {
             type: String,
-            required: true,
+            default: "",
+        },
+
+        lastName: {
+            type: String,
+            default: "",
+        },
+
+        imageUrl: {
+            type: String,
+            default: "",
         },
     },
     {
@@ -26,4 +35,7 @@ const userSchema = new mongoose.Schema(
     }
 );
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model(
+    "User",
+    userSchema
+);

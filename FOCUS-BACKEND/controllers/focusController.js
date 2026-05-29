@@ -1,17 +1,13 @@
 const FocusLog = require("../models/FocusLog");
 
-const calculateFocusScore = require(
-    "../utils/calculateFocusScore"
-);
+const {
+    analyzeFocus,
+} = require("../services/aiService");
 
 const saveFocusData = async (req, res) => {
     try {
-        const {
-            sessionId,
-            eyeDetected,
-            faceDetected,
-            lookingAway,
-        } = req.body;
+
+        const { sessionId } = req.body;
 
         if (!sessionId) {
             return res.status(400).json({
@@ -20,18 +16,21 @@ const saveFocusData = async (req, res) => {
             });
         }
 
-        const focusScore = calculateFocusScore({
-            eyeDetected,
-            faceDetected,
-            lookingAway,
-        });
+        const aiResult = await analyzeFocus({});
+
+        if (!aiResult) {
+            return res.status(500).json({
+                success: false,
+                message: "AI Service Not Available",
+            });
+        }
 
         const focusLog = await FocusLog.create({
             sessionId,
-            focusScore,
-            eyeDetected,
-            faceDetected,
-            lookingAway,
+            focusScore: aiResult.focusScore,
+            eyeDetected: aiResult.eyeDetected,
+            faceDetected: aiResult.faceDetected,
+            lookingAway: aiResult.lookingAway,
         });
 
         res.status(201).json({
@@ -39,11 +38,16 @@ const saveFocusData = async (req, res) => {
             message: "Focus data saved successfully",
             focusLog,
         });
+
     } catch (error) {
+
+        console.error(error);
+
         res.status(500).json({
             success: false,
             message: error.message,
         });
+
     }
 };
 

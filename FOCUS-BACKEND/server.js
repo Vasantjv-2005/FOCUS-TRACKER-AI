@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const express = require("express");
-
 const cors = require("cors");
 
 const {
@@ -9,7 +8,6 @@ const {
 } = require("@clerk/express");
 
 const connectDB = require("./config/db");
-
 
 // ===============================
 // ROUTES IMPORTS
@@ -27,6 +25,9 @@ const webhookRoutes = require(
     "./routes/webhookRoutes"
 );
 
+const reportRoutes = require(
+    "./routes/reportRoutes"
+);
 
 // ===============================
 // APP INITIALIZATION
@@ -34,13 +35,11 @@ const webhookRoutes = require(
 
 const app = express();
 
-
 // ===============================
 // DATABASE CONNECTION
 // ===============================
 
 connectDB();
-
 
 // ===============================
 // MIDDLEWARES
@@ -48,19 +47,28 @@ connectDB();
 
 app.use(cors());
 
+// IMPORTANT:
+// Clerk webhook needs raw body
+app.use(
+    "/api/webhooks",
+    express.raw({
+        type: "application/json",
+    })
+);
+
 app.use(express.json());
 
-app.use(express.urlencoded({
-    extended: true,
-}));
-
+app.use(
+    express.urlencoded({
+        extended: true,
+    })
+);
 
 // ===============================
 // CLERK MIDDLEWARE
 // ===============================
 
 app.use(clerkMiddleware());
-
 
 // ===============================
 // HEALTH CHECK ROUTE
@@ -75,7 +83,6 @@ app.get("/", (req, res) => {
     });
 
 });
-
 
 // ===============================
 // API ROUTES
@@ -92,10 +99,14 @@ app.use(
 );
 
 app.use(
+    "/api/report",
+    reportRoutes
+);
+
+app.use(
     "/api/webhooks",
     webhookRoutes
 );
-
 
 // ===============================
 // 404 ROUTE HANDLER
@@ -110,14 +121,13 @@ app.use((req, res) => {
 
 });
 
-
 // ===============================
 // GLOBAL ERROR HANDLER
 // ===============================
 
 app.use((err, req, res, next) => {
 
-    console.log(err.stack);
+    console.error(err.stack);
 
     res.status(500).json({
         success: false,
@@ -127,12 +137,12 @@ app.use((err, req, res, next) => {
 
 });
 
-
 // ===============================
 // SERVER LISTEN
 // ===============================
 
-const PORT = process.env.PORT || 5000;
+const PORT =
+    process.env.PORT || 5000;
 
 app.listen(PORT, () => {
 

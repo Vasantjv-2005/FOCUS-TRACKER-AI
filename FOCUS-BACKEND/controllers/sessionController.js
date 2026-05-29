@@ -7,9 +7,10 @@ const startSession = async (req, res) => {
 
         const userId = req.auth.userId;
 
-        const session = await StudySession.create({
-            userId,
-        });
+        const session =
+            await StudySession.create({
+                userId,
+            });
 
         res.status(201).json({
             success: true,
@@ -32,13 +33,6 @@ const endSession = async (req, res) => {
 
         const { sessionId } = req.body;
 
-        if (!sessionId) {
-            return res.status(400).json({
-                success: false,
-                message: "Session ID is required",
-            });
-        }
-
         const session =
             await StudySession.findByIdAndUpdate(
                 sessionId,
@@ -49,13 +43,6 @@ const endSession = async (req, res) => {
                     new: true,
                 }
             );
-
-        if (!session) {
-            return res.status(404).json({
-                success: false,
-                message: "Session not found",
-            });
-        }
 
         res.status(200).json({
             success: true,
