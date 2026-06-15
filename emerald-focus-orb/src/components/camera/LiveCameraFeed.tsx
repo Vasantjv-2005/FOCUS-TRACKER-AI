@@ -84,8 +84,7 @@ export function LiveCameraFeed({ stream, focusScore, tracking, onTrack, onStop }
 
       <button
         onClick={onTrack}
-        disabled={!stream}
-        className="group relative mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-primary via-emerald-deep to-primary px-4 py-3 text-sm font-semibold text-primary-foreground glow-emerald transition hover:brightness-110 disabled:opacity-50"
+        className="group relative mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-primary via-emerald-deep to-primary px-4 py-3 text-sm font-semibold text-primary-foreground glow-emerald transition hover:brightness-110"
       >
         <Sparkles className="h-4 w-4" />
         {tracking ? "Tracking eyes…" : "Track My Eyes"}

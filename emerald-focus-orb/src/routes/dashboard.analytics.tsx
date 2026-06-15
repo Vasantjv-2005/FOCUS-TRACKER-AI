@@ -1,49 +1,55 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { fetchSessionReport } from "@/lib/api";
+import { fetchSessionReport, fetchAnalyticsData, fetchDashboardStats } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard/analytics")({
   component: Analytics,
 });
 
-const daily = Array.from({ length: 14 }, (_, i) => ({ day: `D${i + 1}`, score: 55 + Math.round(Math.random() * 40) }));
-const weekly = [
-  { w: "W1", score: 68 }, { w: "W2", score: 74 }, { w: "W3", score: 79 }, { w: "W4", score: 82 }, { w: "W5", score: 88 },
-];
-const monthly = Array.from({ length: 6 }, (_, i) => ({ m: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"][i], score: 60 + i * 5 + Math.random() * 5 }));
-const distribution = [
-  { name: "Deep work", value: 42, color: "#00A86B" },
-  { name: "Review", value: 24, color: "#D4AF37" },
-  { name: "Practice", value: 20, color: "#00695C" },
-  { name: "Breaks", value: 14, color: "#B87333" },
-];
-
 function Analytics() {
   const [report, setReport] = useState<any>(null);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      const savedSessionId = localStorage.getItem("focusSessionId");
-      if (!savedSessionId) {
-        setReport(null);
-        return;
+      setLoading(true);
+      try {
+        const savedSessionId = localStorage.getItem("focusSessionId");
+        if (savedSessionId) {
+          const data = await fetchSessionReport(savedSessionId);
+          setReport(data);
+        } else {
+          const statsData = await fetchDashboardStats();
+          setStats(statsData.stats);
+        }
+      } catch (error) {
+        console.error("Failed to load report or stats", error);
       }
 
       try {
-        const data = await fetchSessionReport(savedSessionId);
-        setReport(data);
+        const data = await fetchAnalyticsData();
+        setAnalytics(data);
       } catch (error) {
-        console.error("Failed to load report", error);
+        console.error("Failed to load analytics", error);
+      } finally {
+        setLoading(false);
       }
     };
 
     load();
   }, []);
 
-  const average = report?.averageFocusScore ?? 0;
-  const distractionCount = report?.distractionCount ?? 0;
-  const totalRecords = report?.totalRecords ?? 0;
+  const daily = analytics?.daily || [];
+  const weekly = analytics?.weekly || [];
+  const monthly = analytics?.monthly || [];
+  const distribution = analytics?.distribution || [];
+
+  const average = report?.averageFocusScore ?? stats?.weeklyAvg ?? (analytics?.daily?.[analytics?.daily?.length - 1]?.score ?? 0);
+  const distractionCount = report?.distractionCount ?? stats?.distractions?.lookingAway ?? 0;
+  const totalRecords = report?.totalRecords ?? stats?.totalSessions ?? 0;
 
   return (
     <div className="space-y-6">

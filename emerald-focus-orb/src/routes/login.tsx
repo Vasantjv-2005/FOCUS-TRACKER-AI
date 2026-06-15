@@ -30,8 +30,6 @@ function Login() {
 
         <div className="mt-6 flex justify-center">
           <SignIn
-            routing="path"
-            path="/login"
             signUpUrl="/signup"
             forceRedirectUrl="/dashboard"
             fallbackRedirectUrl="/dashboard"

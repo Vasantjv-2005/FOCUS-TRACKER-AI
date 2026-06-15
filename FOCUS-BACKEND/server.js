@@ -70,6 +70,13 @@ app.use(
 
 app.use(clerkMiddleware());
 
+app.use((req, res, next) => {
+    console.log(`\n🔑 [DEBUG] Path: ${req.path} | Method: ${req.method}`);
+    console.log(`🔑 [DEBUG] Auth Header: ${req.headers.authorization ? "Present" : "Missing"}`);
+    console.log(`🔑 [DEBUG] Clerk Auth Claims userId: ${req.auth?.userId || "undefined"}`);
+    next();
+});
+
 // ===============================
 // HEALTH CHECK ROUTE
 // ===============================

@@ -1,17 +1,83 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useUser } from "@clerk/clerk-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/settings")({
   component: Settings,
 });
 
 function Settings() {
+  const { user } = useUser();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setFirstName(user.firstName || "");
+      setLastName(user.lastName || "");
+    }
+  }, [user]);
+
+  const handleSaveName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setUpdating(true);
+    try {
+      await user.update({
+        firstName,
+        lastName,
+      });
+      toast.success("Name updated successfully!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to update name");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header>
         <div className="text-xs uppercase tracking-[0.25em] text-accent">Settings</div>
         <h1 className="mt-1 font-display text-3xl font-semibold">Preferences</h1>
       </header>
+
+      <Section title="Profile Information">
+        <form onSubmit={handleSaveName} className="space-y-4 py-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider">First Name</label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First Name"
+                className="mt-1.5 w-full rounded-xl border border-border bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider">Last Name</label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last Name"
+                className="mt-1.5 w-full rounded-xl border border-border bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={updating}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground glow-emerald hover:brightness-110 disabled:opacity-50"
+          >
+            {updating ? "Saving..." : "Save Changes"}
+          </button>
+        </form>
+      </Section>
 
       <Section title="Appearance">
         <Row label="Theme" hint="Midnight Emerald Luxury">

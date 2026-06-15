@@ -1,12 +1,24 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string> || {}),
+  };
+
+  try {
+    const token = await (window as any).Clerk?.session?.getToken();
+    console.log(`📡 [API CLIENT] Path: ${path} | Has Clerk Token: ${token ? "YES" : "NO"}`);
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  } catch (err) {
+    console.warn("Could not get Clerk session token:", err);
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
     ...init,
+    headers,
   });
 
   const data = await res.json().catch(() => ({}));
@@ -48,6 +60,28 @@ export interface ReportResponse {
   }>;
 }
 
+export interface DashboardStatsResponse {
+  success: boolean;
+  stats: {
+    currentFocus: number;
+    todayStudy: string;
+    weeklyAvg: number;
+    totalSessions: number;
+    distractions: {
+      lookingAway: number;
+      attentionDrops: number;
+    };
+  };
+}
+
+export interface AnalyticsResponse {
+  success: boolean;
+  daily: Array<{ day: string; score: number }>;
+  weekly: Array<{ w: string; score: number }>;
+  monthly: Array<{ m: string; score: number }>;
+  distribution: Array<{ name: string; value: number; color: string }>;
+}
+
 export async function startSessionApi() {
   return request<{ success: boolean; message: string; session: SessionRecord }>("/session/start", {
     method: "POST",
@@ -71,3 +105,16 @@ export async function saveFocusSnapshot(payload: FocusSnapshotPayload) {
 export async function fetchSessionReport(sessionId: string) {
   return request<ReportResponse>(`/report/${sessionId}`, { method: "GET" });
 }
+
+export async function fetchDashboardStats() {
+  return request<DashboardStatsResponse>("/session/stats", { method: "GET" });
+}
+
+export async function fetchAnalyticsData() {
+  return request<AnalyticsResponse>("/session/analytics", { method: "GET" });
+}
+
+export async function fetchAllSessions() {
+  return request<{ success: boolean; sessions: SessionRecord[] }>("/session/all", { method: "GET" });
+}
+

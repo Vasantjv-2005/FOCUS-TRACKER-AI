@@ -3,11 +3,12 @@ import { motion } from "framer-motion";
 import { Activity, Brain, Clock, Eye, EyeOff, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { saveFocusSnapshot } from "@/lib/api";
+import { saveFocusSnapshot, fetchDashboardStats } from "@/lib/api";
 import { CameraPermissionDialog } from "@/components/camera/CameraPermissionDialog";
 import { LiveCameraFeed } from "@/components/camera/LiveCameraFeed";
 import { FocusSphere } from "@/components/focus/FocusSphere";
 import { useCamera } from "@/hooks/useCamera";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/")({
   component: DashboardHome,
@@ -19,7 +20,33 @@ function DashboardHome() {
   const [tracking, setTracking] = useState(false);
   const [focusScore, setFocusScore] = useState(87);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [secs, setSecs] = useState(0);
   const savingRef = useRef(false);
+  const focusScoreRef = useRef(focusScore);
+
+  useEffect(() => {
+    focusScoreRef.current = focusScore;
+  }, [focusScore]);
+
+  const loadStats = async () => {
+    try {
+      const data = await fetchDashboardStats();
+      setStats(data.stats);
+      if (data.stats && !tracking) {
+        setFocusScore(data.stats.currentFocus || 80);
+      }
+    } catch (err) {
+      console.error("Failed to load dashboard stats", err);
+    }
+  };
+
+  const formatTime = (totalSeconds: number) => {
+    const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+    const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+    const ss = String(totalSeconds % 60).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setAskPermission(true), 600);
@@ -31,13 +58,35 @@ function DashboardHome() {
   }, []);
 
   useEffect(() => {
+    loadStats();
+  }, [tracking]);
+
+  useEffect(() => {
+    if (!tracking) return;
+    const id = setInterval(() => {
+      setSecs((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [tracking]);
+
+  // Poll stats every 10 seconds while tracking to keep Today's Study updated in real-time
+  useEffect(() => {
+    if (!tracking) return;
+    const id = setInterval(() => {
+      loadStats();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [tracking]);
+
+  useEffect(() => {
     if (!tracking) return;
     const id = setInterval(() => setFocusScore((s) => Math.max(45, Math.min(99, s + Math.round((Math.random() - 0.5) * 6)))), 1500);
     return () => clearInterval(id);
   }, [tracking]);
 
-  const saveSnapshot = async (score = focusScore) => {
-    if (!sessionId || savingRef.current) return;
+  const saveSnapshot = async () => {
+    const score = focusScoreRef.current;
+    if (!sessionId || sessionId.startsWith("local_") || savingRef.current) return;
 
     savingRef.current = true;
     try {
@@ -63,12 +112,72 @@ function DashboardHome() {
     }, 5000);
 
     return () => clearInterval(id);
-  }, [tracking, sessionId, focusScore]);
+  }, [tracking, sessionId]);
+
+  const handleStartTracking = async () => {
+    let activeStream = stream;
+    if (!activeStream) {
+      activeStream = await request();
+    }
+    if (!activeStream) {
+      toast.error("Camera access is required to track eyes.");
+      return;
+    }
+
+    setTracking(true);
+    setSecs(0);
+
+    try {
+      // Start backend study session
+      const result = await startSessionApi();
+      const nextSessionId = result.session._id;
+      setSessionId(nextSessionId);
+      localStorage.setItem("focusSessionId", nextSessionId);
+
+      // Save initial snapshot immediately
+      try {
+        await saveFocusSnapshot({
+          sessionId: nextSessionId,
+          focusScore: focusScoreRef.current,
+          eyeDetected: true,
+          faceDetected: true,
+          lookingAway: focusScoreRef.current < 60,
+        });
+      } catch (err) {
+        console.error("Failed to save initial snapshot", err);
+      }
+    } catch (error) {
+      console.error("Failed to start session on home dashboard", error);
+      const fallbackId = `local_${Date.now()}`;
+      setSessionId(fallbackId);
+      localStorage.setItem("focusSessionId", fallbackId);
+      toast.error("Running in local mode: Failed to sync with server.");
+    }
+  };
 
   const handleStopTracking = async () => {
     setTracking(false);
-    if (!sessionId) return;
-    await saveSnapshot();
+    if (sessionId) {
+      await saveSnapshot();
+      if (!sessionId.startsWith("local_")) {
+        try {
+          await endSessionApi(sessionId);
+        } catch (err) {
+          console.error("Failed to end session on server", err);
+        }
+      }
+      localStorage.removeItem("focusSessionId");
+      setSessionId(null);
+    }
+    setSecs(0);
+    setTimeout(loadStats, 1000);
+  };
+
+  const getTodayStudyVal = () => {
+    const totalMins = (stats?.todayStudyMinutes || 0) + Math.floor(secs / 60);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    return `${h}h ${m}m`;
   };
 
   return (
@@ -81,10 +190,10 @@ function DashboardHome() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Activity} label="Current Focus" value={`${focusScore}%`} delta="+4.2%" tone="emerald" />
-        <StatCard icon={Clock} label="Today's Study" value="3h 42m" delta="+38m" tone="gold" />
-        <StatCard icon={TrendingUp} label="Weekly Avg" value="82%" delta="+6%" tone="emerald" />
-        <StatCard icon={Brain} label="Total Sessions" value="148" delta="+12" tone="gold" />
+        <StatCard icon={Activity} label="Current Focus" value={`${focusScore}%`} delta="Live" tone="emerald" />
+        <StatCard icon={Clock} label="Today's Study" value={getTodayStudyVal()} delta="Today" tone="gold" />
+        <StatCard icon={TrendingUp} label="Weekly Avg" value={`${stats?.weeklyAvg || 0}%`} delta="Weekly" tone="emerald" />
+        <StatCard icon={Brain} label="Total Sessions" value={`${stats?.totalSessions || 0}`} delta="All-time" tone="gold" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -96,9 +205,16 @@ function DashboardHome() {
                 <div className="text-xs uppercase tracking-[0.25em] text-accent">Live monitoring</div>
                 <h2 className="mt-1 font-display text-xl font-semibold">Realtime focus signal</h2>
               </div>
-              <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
-                {tracking ? "Tracking" : "Idle"}
-              </span>
+              <div className="flex items-center gap-2">
+                {tracking && (
+                  <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs text-accent font-mono animate-pulse">
+                    {formatTime(secs)}
+                  </span>
+                )}
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary">
+                  {tracking ? "Tracking" : "Idle"}
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
@@ -109,7 +225,7 @@ function DashboardHome() {
                 stream={stream}
                 focusScore={focusScore}
                 tracking={tracking}
-                onTrack={() => setTracking((t) => !t)}
+                onTrack={tracking ? handleStopTracking : handleStartTracking}
                 onStop={handleStopTracking}
               />
             </div>
@@ -152,12 +268,12 @@ function DashboardHome() {
         <div className="space-y-6">
           <div className="glass-panel p-5">
             <h3 className="font-display text-lg font-semibold">Distraction analysis</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Today's session</p>
+            <p className="mt-1 text-xs text-muted-foreground">Last session metrics</p>
             <div className="mt-5 space-y-3">
-              <DistRow icon={EyeOff} label="Looking away" value="12" hint="-3 vs yesterday" />
-              <DistRow icon={Clock} label="Idle time" value="6m 18s" hint="2 short pauses" />
-              <DistRow icon={Eye} label="Attention drops" value="4" hint="Mostly mid-session" />
-              <DistRow icon={Zap} label="Flow moments" value="3" hint="20–35 min each" tone="emerald" />
+              <DistRow icon={EyeOff} label="Looking away" value={`${stats?.distractions?.lookingAway ?? 0}`} hint="Instances detected" />
+              <DistRow icon={Clock} label="Idle time" value="0m" hint="No activity detected" />
+              <DistRow icon={Eye} label="Attention drops" value={`${stats?.distractions?.attentionDrops ?? 0}`} hint="Focus score < 60%" />
+              <DistRow icon={Zap} label="Flow moments" value="--" hint="Focus score >= 85%" tone="emerald" />
             </div>
           </div>
 
