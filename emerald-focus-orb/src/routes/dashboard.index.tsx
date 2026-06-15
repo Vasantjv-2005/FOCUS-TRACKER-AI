@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Activity, Brain, Clock, Eye, EyeOff, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { saveFocusSnapshot, fetchDashboardStats } from "@/lib/api";
+import { saveFocusSnapshot, fetchDashboardStats, startSessionApi, endSessionApi } from "@/lib/api";
 import { CameraPermissionDialog } from "@/components/camera/CameraPermissionDialog";
 import { LiveCameraFeed } from "@/components/camera/LiveCameraFeed";
 import { FocusSphere } from "@/components/focus/FocusSphere";

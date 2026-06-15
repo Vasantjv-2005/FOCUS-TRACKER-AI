@@ -207,7 +207,7 @@ const getAnalyticsData = async (req, res) => {
             
             daily.push({
                 day: `D${14 - i}`,
-                score: avgScore || 50 + Math.round(Math.random() * 20), // Fallback to semi-realistic data if none
+                score: avgScore,
             });
         }
 
@@ -229,7 +229,7 @@ const getAnalyticsData = async (req, res) => {
 
             weekly.push({
                 w: `W${5 - i}`,
-                score: avgScore || 60 + Math.round(Math.random() * 15),
+                score: avgScore,
             });
         }
 
@@ -252,7 +252,7 @@ const getAnalyticsData = async (req, res) => {
 
             monthly.push({
                 m: monthNames[monthIndex],
-                score: avgScore || 70 + Math.round(Math.random() * 10),
+                score: avgScore,
             });
         }
 
@@ -269,12 +269,12 @@ const getAnalyticsData = async (req, res) => {
             else breaksCount++;
         });
 
-        const totalDistrib = deepWorkCount + practiceCount + reviewCount + breaksCount || 1;
+        const totalDistrib = deepWorkCount + practiceCount + reviewCount + breaksCount;
         const distribution = [
-            { name: "Deep work", value: Math.round((deepWorkCount / totalDistrib) * 100) || 40, color: "#00A86B" },
-            { name: "Review", value: Math.round((reviewCount / totalDistrib) * 100) || 20, color: "#D4AF37" },
-            { name: "Practice", value: Math.round((practiceCount / totalDistrib) * 100) || 25, color: "#00695C" },
-            { name: "Breaks", value: Math.round((breaksCount / totalDistrib) * 100) || 15, color: "#B87333" },
+            { name: "Deep work", value: totalDistrib > 0 ? Math.round((deepWorkCount / totalDistrib) * 100) : 0, color: "#00A86B" },
+            { name: "Review", value: totalDistrib > 0 ? Math.round((reviewCount / totalDistrib) * 100) : 0, color: "#D4AF37" },
+            { name: "Practice", value: totalDistrib > 0 ? Math.round((practiceCount / totalDistrib) * 100) : 0, color: "#00695C" },
+            { name: "Breaks", value: totalDistrib > 0 ? Math.round((breaksCount / totalDistrib) * 100) : 0, color: "#B87333" },
         ];
 
         res.status(200).json({

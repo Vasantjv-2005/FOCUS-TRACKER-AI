@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Download, FileSpreadsheet, FileText, Calendar, Loader2 } from "lucide-react";
+import { FileText, Calendar, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { fetchAllSessions, fetchSessionReport, SessionRecord } from "@/lib/api";
+import { fetchAllSessions, fetchSessionReport, SessionRecord, endSessionApi } from "@/lib/api";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/reports")({
@@ -12,48 +12,38 @@ export const Route = createFileRoute("/dashboard/reports")({
 function Reports() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+
+  const loadSessions = async () => {
+    try {
+      const data = await fetchAllSessions();
+      setSessions(data.sessions || []);
+    } catch (error) {
+      console.error("Failed to load sessions for report", error);
+      toast.error("Failed to load study sessions");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await fetchAllSessions();
-        setSessions(data.sessions || []);
-      } catch (error) {
-        console.error("Failed to load sessions for report", error);
-        toast.error("Failed to load study sessions");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    loadSessions();
   }, []);
 
-  const downloadCSV = async (session: SessionRecord) => {
+  const handleStopTrackingInReports = async (sessionId: string) => {
+    setStoppingId(sessionId);
     try {
-      const data = await fetchSessionReport(session._id);
-      if (!data.focusLogs || data.focusLogs.length === 0) {
-        toast.error("No log data available for this session");
-        return;
+      await endSessionApi(sessionId);
+      if (localStorage.getItem("focusSessionId") === sessionId) {
+        localStorage.removeItem("focusSessionId");
       }
-      const headers = ["Timestamp", "Focus Score", "Looking Away"];
-      const rows = data.focusLogs.map(log => [
-        new Date(log.createdAt).toISOString(),
-        log.focusScore,
-        log.lookingAway
-      ]);
-      const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `focus_report_${session._id}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success("CSV report downloaded!");
-    } catch (err) {
-      console.error("CSV Download failed", err);
-      toast.error("CSV Download failed");
+      toast.success("Tracking stopped and session completed!");
+      await loadSessions();
+    } catch (err: any) {
+      console.error("Failed to stop tracking", err);
+      toast.error(err.message || "Failed to stop tracking");
+    } finally {
+      setStoppingId(null);
     }
   };
 
@@ -85,7 +75,7 @@ function Reports() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Focus Report - ${session._id}</title>
+            <title>Focus Report - Session #${sessions.length - sessions.findIndex(s => s._id === session._id)}</title>
             <style>
               body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1e293b; padding: 40px; line-height: 1.5; }
               .header { border-bottom: 3px solid #00A86B; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
@@ -108,8 +98,8 @@ function Reports() {
             </div>
             <div class="meta-grid">
               <div class="meta-item">
-                <div class="meta-label">Session ID</div>
-                <div class="meta-value">${session._id}</div>
+                <div class="meta-label">Session Name</div>
+                <div class="meta-value">Session #${sessions.length - sessions.findIndex(s => s._id === session._id)} (${session._id.slice(-6)})</div>
               </div>
               <div class="meta-item">
                 <div class="meta-label">Date</div>
@@ -203,7 +193,11 @@ function Reports() {
                 <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-primary/20 blur-2xl" />
                 <div className="relative">
                   <div className="flex items-center justify-between">
-                    <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
+                    <span className={`rounded-full border px-2.5 py-0.5 text-[10px] uppercase tracking-wider ${
+                      s.endTime 
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" 
+                        : "border-accent/30 bg-accent/10 text-accent"
+                    }`}>
                       {s.endTime ? "Completed" : "Active"}
                     </span>
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -212,25 +206,37 @@ function Reports() {
                     </span>
                   </div>
                   <h3 className="mt-4 font-display text-lg font-semibold leading-snug truncate">
-                    Session {s._id.slice(-6)}
+                    Session #{sessions.length - i} ({s._id.slice(-6)})
                   </h3>
                   <div className="mt-5 grid grid-cols-2 gap-3">
-                    <Mini label="Avg focus" value={s.averageFocusScore ? `${s.averageFocusScore}%` : "--"} tone="emerald" />
+                    <Mini label="Avg focus" value={s.endTime ? `${Math.round(s.averageFocusScore || 0)}%` : "--"} tone="emerald" />
                     <Mini label="Study time" value={durationStr} tone="gold" />
                   </div>
                   <div className="mt-6 flex gap-2">
-                    <button
-                      onClick={() => downloadPDF(s)}
-                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-xs font-semibold text-primary-foreground glow-emerald hover:brightness-110"
-                    >
-                      <FileText className="h-3.5 w-3.5" /> PDF
-                    </button>
-                    <button
-                      onClick={() => downloadCSV(s)}
-                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-white/5 px-3 py-2.5 text-xs font-semibold hover:bg-white/10"
-                    >
-                      <FileSpreadsheet className="h-3.5 w-3.5" /> CSV
-                    </button>
+                    {s.endTime ? (
+                      <button
+                        onClick={() => downloadPDF(s)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-xs font-semibold text-primary-foreground glow-emerald hover:brightness-110"
+                      >
+                        <FileText className="h-3.5 w-3.5" /> PDF
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleStopTrackingInReports(s._id)}
+                        disabled={stoppingId === s._id}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-800/50 disabled:cursor-not-allowed px-3 py-2.5 text-xs font-semibold text-white glow-red hover:brightness-110 transition-all animate-pulse"
+                      >
+                        {stoppingId === s._id ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Stopping...
+                          </>
+                        ) : (
+                          <>
+                            Stop Tracking
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>
