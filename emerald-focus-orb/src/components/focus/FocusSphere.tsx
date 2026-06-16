@@ -1,9 +1,13 @@
 import { motion } from "framer-motion";
 
-export function FocusSphere({ score = 87, size = 280 }: { score?: number; size?: number }) {
+export function FocusSphere({ score = 87, size = 280, progress }: { score?: number; size?: number; progress?: number }) {
   const r = size / 2 - 16;
   const c = 2 * Math.PI * r;
   const dash = (score / 100) * c;
+
+  const rTimer = size / 2 - 6;
+  const cTimer = 2 * Math.PI * rTimer;
+  const dashTimer = progress !== undefined ? progress * cTimer : cTimer;
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -41,14 +45,20 @@ export function FocusSphere({ score = 87, size = 280 }: { score?: number; size?:
         </div>
       </motion.div>
 
-      {/* Progress arc */}
+      {/* Progress arcs */}
       <svg className="absolute inset-0 -rotate-90" width={size} height={size}>
         <defs>
           <linearGradient id="focusArc" x1="0" x2="1">
             <stop offset="0%" stopColor="#00A86B" />
             <stop offset="100%" stopColor="#D4AF37" />
           </linearGradient>
+          <linearGradient id="timerArc" x1="0" x2="1">
+            <stop offset="0%" stopColor="#D4AF37" />
+            <stop offset="100%" stopColor="#F5E6A8" />
+          </linearGradient>
         </defs>
+        
+        {/* Focus Score Arc */}
         <circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.06)" strokeWidth="2" fill="none" />
         <motion.circle
           cx={size / 2}
@@ -63,7 +73,28 @@ export function FocusSphere({ score = 87, size = 280 }: { score?: number; size?:
           animate={{ strokeDashoffset: c - dash }}
           transition={{ duration: 1.6, ease: "easeOut" }}
         />
+
+        {/* Timer Countdown Arc */}
+        {progress !== undefined && (
+          <>
+            <circle cx={size / 2} cy={size / 2} r={rTimer} stroke="rgba(255,255,255,0.03)" strokeWidth="1.5" fill="none" />
+            <motion.circle
+              cx={size / 2}
+              cy={size / 2}
+              r={rTimer}
+              stroke="url(#timerArc)"
+              strokeWidth="2.5"
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={cTimer}
+              initial={{ strokeDashoffset: cTimer }}
+              animate={{ strokeDashoffset: cTimer - dashTimer }}
+              transition={{ duration: 0.5, ease: "linear" }}
+            />
+          </>
+        )}
       </svg>
     </div>
   );
 }
+

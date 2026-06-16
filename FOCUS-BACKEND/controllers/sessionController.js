@@ -5,10 +5,49 @@ const FocusLog = require(
     "../models/FocusLog"
 );
 
+const calculateSessionStats = (logs) => {
+    let averageFocusScore = 0;
+    let totalDistractions = 0;
+
+    if (logs.length > 0) {
+        const sumScore = logs.reduce((sum, log) => sum + log.focusScore, 0);
+        averageFocusScore = Math.round(sumScore / logs.length);
+
+        // Sort logs chronologically to count transitions correctly
+        const sortedLogs = [...logs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        let wasDistracted = false;
+        for (let i = 0; i < sortedLogs.length; i++) {
+            // Count distinct distraction incidents (off-center or eyes missing) or stepped away (face missing)
+            const isDistractedOrMissing = sortedLogs[i].lookingAway === true || sortedLogs[i].faceDetected === false;
+            if (isDistractedOrMissing) {
+                if (!wasDistracted) {
+                    totalDistractions++;
+                    wasDistracted = true;
+                }
+            } else {
+                wasDistracted = false;
+            }
+        }
+    }
+
+    return { averageFocusScore, totalDistractions };
+};
+
 const startSession = async (req, res) => {
     try {
 
         const userId = req.auth?.userId || "anonymous";
+
+        // End any existing active sessions for this user to prevent duplicates
+        const activeSessions = await StudySession.find({ userId, endTime: { $exists: false } });
+        for (const s of activeSessions) {
+            s.endTime = new Date();
+            const logs = await FocusLog.find({ sessionId: s._id });
+            const { averageFocusScore, totalDistractions } = calculateSessionStats(logs);
+            s.averageFocusScore = averageFocusScore;
+            s.totalDistractions = totalDistractions;
+            await s.save();
+        }
 
         const session =
             await StudySession.create({
@@ -45,14 +84,7 @@ const endSession = async (req, res) => {
 
         // Calculate average focus and distractions
         const logs = await FocusLog.find({ sessionId });
-        let averageFocusScore = 0;
-        let totalDistractions = 0;
-
-        if (logs.length > 0) {
-            const sumScore = logs.reduce((sum, log) => sum + log.focusScore, 0);
-            averageFocusScore = Math.round(sumScore / logs.length);
-            totalDistractions = logs.filter(log => log.lookingAway === true).length;
-        }
+        const { averageFocusScore, totalDistractions } = calculateSessionStats(logs);
 
         const session =
             await StudySession.findByIdAndUpdate(
@@ -86,7 +118,17 @@ const endSession = async (req, res) => {
 const getAllSessions = async (req, res) => {
     try {
         const userId = req.auth?.userId || "anonymous";
-        const sessions = await StudySession.find({ userId }).sort({ startTime: -1 });
+        const sessions = await StudySession.find({ userId }).sort({ startTime: -1 }).lean();
+
+        // Dynamically compute metrics for active sessions from their logs
+        for (let s of sessions) {
+            if (!s.endTime) {
+                const logs = await FocusLog.find({ sessionId: s._id });
+                const { averageFocusScore, totalDistractions } = calculateSessionStats(logs);
+                s.averageFocusScore = averageFocusScore;
+                s.totalDistractions = totalDistractions;
+            }
+        }
 
         res.status(200).json({
             success: true,
@@ -149,13 +191,36 @@ const getSessionStats = async (req, res) => {
             currentFocus = lastSession.averageFocusScore || 0;
         }
 
-        // Get distraction stats from last session or overall
+        // Get distraction stats from last session or overall using transition-based counters
         let lookingAwayCount = 0;
         let attentionDrops = 0;
         if (lastSession) {
             const logs = await FocusLog.find({ sessionId: lastSession._id });
-            lookingAwayCount = logs.filter(l => l.lookingAway).length;
-            attentionDrops = logs.filter(l => l.focusScore < 60).length;
+            const sortedLogs = [...logs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            
+            let wasAway = false;
+            let wasDistracted = false;
+            for (let i = 0; i < sortedLogs.length; i++) {
+                // Stepped away: face missing
+                if (sortedLogs[i].faceDetected === false) {
+                    if (!wasAway) {
+                        attentionDrops++;
+                        wasAway = true;
+                    }
+                } else {
+                    wasAway = false;
+                }
+
+                // Looked away: face present but eyes missing or off-center
+                if (sortedLogs[i].lookingAway === true) {
+                    if (!wasDistracted) {
+                        lookingAwayCount++;
+                        wasDistracted = true;
+                    }
+                } else {
+                    wasDistracted = false;
+                }
+            }
         }
 
         res.status(200).json({

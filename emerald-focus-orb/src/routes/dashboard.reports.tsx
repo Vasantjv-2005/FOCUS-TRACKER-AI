@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { FileText, Calendar, Loader2 } from "lucide-react";
+import { FileText, Calendar, Loader2, Brain, Clock, ShieldAlert, Award, PlayCircle, BarChart2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { fetchAllSessions, fetchSessionReport, SessionRecord, endSessionApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ function Reports() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const [timeNow, setTimeNow] = useState(Date.now());
 
   const loadSessions = async () => {
     try {
@@ -28,6 +29,11 @@ function Reports() {
 
   useEffect(() => {
     loadSessions();
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTimeNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleStopTrackingInReports = async (sessionId: string) => {
@@ -50,11 +56,7 @@ function Reports() {
   const downloadPDF = async (session: SessionRecord) => {
     try {
       const data = await fetchSessionReport(session._id);
-      if (!data.focusLogs || data.focusLogs.length === 0) {
-        toast.error("No log data available for this session");
-        return;
-      }
-
+      
       const printWindow = window.open("", "_blank");
       if (!printWindow) {
         toast.error("Popup blocked! Please allow popups to download PDF.");
@@ -64,13 +66,23 @@ function Reports() {
       const startTimeStr = new Date(session.startTime).toLocaleString();
       const endTimeStr = session.endTime ? new Date(session.endTime).toLocaleString() : "Active Session";
 
-      let logsHtml = data.focusLogs.map(log => `
-        <tr>
-          <td style="padding: 10px; border-bottom: 1px solid #eee;">${new Date(log.createdAt).toLocaleTimeString()}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; font-weight: bold; color: ${log.focusScore >= 80 ? '#00A86B' : log.focusScore >= 60 ? '#D4AF37' : '#DC2626'}">${log.focusScore}%</td>
-          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${log.lookingAway ? "⚠️ Yes" : "✅ No"}</td>
-        </tr>
-      `).join("");
+      const logsHtml = data.focusLogs && data.focusLogs.length > 0
+        ? data.focusLogs.map(log => {
+            let statusText = "✅ Focused";
+            if (log.faceDetected === false) {
+              statusText = "❌ Stepped Away";
+            } else if (log.lookingAway === true) {
+              statusText = "⚠️ Distracted";
+            }
+            return `
+              <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #eee;">${new Date(log.createdAt).toLocaleTimeString()}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; font-weight: bold; color: ${log.focusScore >= 80 ? '#00A86B' : log.focusScore >= 60 ? '#D4AF37' : '#DC2626'}">${log.focusScore}%</td>
+                <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${statusText}</td>
+              </tr>
+            `;
+          }).join("")
+        : `<tr><td colspan="3" style="padding: 20px; text-align: center; color: #64748b;">No eye-tracking data captured during this session.</td></tr>`;
 
       printWindow.document.write(`
         <html>
@@ -115,11 +127,11 @@ function Reports() {
               </div>
               <div class="meta-item">
                 <div class="meta-label">Average Focus</div>
-                <div class="meta-value" style="color: #00A86B; font-size: 18px;">${Math.round(data.averageFocusScore)}%</div>
+                <div class="meta-value" style="color: #00A86B; font-size: 18px;">${Math.round(data.averageFocusScore || 0)}%</div>
               </div>
               <div class="meta-item">
                 <div class="meta-label">Distractions Count</div>
-                <div class="meta-value">${data.distractionCount}</div>
+                <div class="meta-value">${data.distractionCount || 0}</div>
               </div>
             </div>
             <table>
@@ -127,7 +139,7 @@ function Reports() {
                 <tr>
                   <th>Time</th>
                   <th style="text-align: center;">Focus Score</th>
-                  <th style="text-align: center;">Looking Away</th>
+                  <th style="text-align: center;">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -156,12 +168,62 @@ function Reports() {
     }
   };
 
+  // Stats summary banner calculations
+  const totalSessions = sessions.length;
+  const activeSessionsCount = sessions.filter(s => !s.endTime).length;
+  const completed = sessions.filter(s => s.endTime && s.averageFocusScore && s.averageFocusScore > 0);
+  const avgFocus = completed.length > 0
+    ? Math.round(completed.reduce((sum, s) => sum + (s.averageFocusScore || 0), 0) / completed.length)
+    : 0;
+
+  const totalMs = completed.reduce((sum, s) => {
+    if (s.endTime) {
+      return sum + (new Date(s.endTime).getTime() - new Date(s.startTime).getTime());
+    }
+    return sum;
+  }, 0);
+  const totalHours = Math.floor(totalMs / (1000 * 60 * 60));
+  const totalMins = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
+  const totalStudyTimeStr = `${totalHours}h ${totalMins}m`;
+
   return (
     <div className="space-y-6">
       <header>
         <div className="text-xs uppercase tracking-[0.25em] text-accent">Reports</div>
         <h1 className="mt-1 font-display text-3xl font-semibold">Download your insights</h1>
       </header>
+
+      {/* Stats summary banner */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="glass-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Total Study Time</span>
+            <Clock className="h-4 w-4 text-accent" />
+          </div>
+          <div className="mt-3 font-display text-2xl font-bold text-gradient-gold">{totalStudyTimeStr}</div>
+        </div>
+        <div className="glass-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Average Focus</span>
+            <Brain className="h-4 w-4 text-primary" />
+          </div>
+          <div className="mt-3 font-display text-2xl font-bold text-gradient-emerald">{avgFocus}%</div>
+        </div>
+        <div className="glass-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Total Sessions</span>
+            <BarChart2 className="h-4 w-4 text-accent" />
+          </div>
+          <div className="mt-3 font-display text-2xl font-bold text-white/90">{totalSessions}</div>
+        </div>
+        <div className="glass-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Active Sessions</span>
+            <PlayCircle className="h-4 w-4 text-rose-400 animate-pulse" />
+          </div>
+          <div className="mt-3 font-display text-2xl font-bold text-gradient-rose">{activeSessionsCount}</div>
+        </div>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-12 text-muted-foreground">
@@ -176,10 +238,17 @@ function Reports() {
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {sessions.map((s, i) => {
             const dateStr = new Date(s.startTime).toLocaleDateString();
-            const durationMs = s.endTime ? new Date(s.endTime).getTime() - new Date(s.startTime).getTime() : 0;
+            const durationMs = s.endTime
+              ? new Date(s.endTime).getTime() - new Date(s.startTime).getTime()
+              : timeNow - new Date(s.startTime).getTime();
             const hours = Math.floor(durationMs / (1000 * 60 * 60));
             const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-            const durationStr = s.endTime ? `${hours}h ${minutes}m` : "Active";
+            const seconds = Math.floor((durationMs % (1000 * 60)) / 1000);
+            const durationStr = s.endTime
+              ? `${hours}h ${minutes}m`
+              : `${hours}h ${minutes}m ${seconds}s`;
+
+            const showAvgFocus = s.averageFocusScore !== undefined && s.averageFocusScore !== null && (s.averageFocusScore > 0 || s.endTime);
 
             return (
               <motion.div
@@ -193,11 +262,12 @@ function Reports() {
                 <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-primary/20 blur-2xl" />
                 <div className="relative">
                   <div className="flex items-center justify-between">
-                    <span className={`rounded-full border px-2.5 py-0.5 text-[10px] uppercase tracking-wider ${
-                      s.endTime 
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" 
-                        : "border-accent/30 bg-accent/10 text-accent"
+                    <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] uppercase tracking-wider ${
+                      s.endTime
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                        : "border-danger/30 bg-danger/10 text-danger animate-pulse"
                     }`}>
+                      {!s.endTime && <span className="h-1.5 w-1.5 rounded-full bg-danger animate-ping" />}
                       {s.endTime ? "Completed" : "Active"}
                     </span>
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -208,9 +278,10 @@ function Reports() {
                   <h3 className="mt-4 font-display text-lg font-semibold leading-snug truncate">
                     Session #{sessions.length - i} ({s._id.slice(-6)})
                   </h3>
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    <Mini label="Avg focus" value={s.endTime ? `${Math.round(s.averageFocusScore || 0)}%` : "--"} tone="emerald" />
-                    <Mini label="Study time" value={durationStr} tone="gold" />
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    <Mini label="Avg focus" value={showAvgFocus ? `${Math.round(s.averageFocusScore || 0)}%` : "--"} tone="emerald" icon={Brain} />
+                    <Mini label="Study time" value={durationStr} tone="gold" icon={Clock} />
+                    <Mini label="Distractions" value={`${s.totalDistractions || 0}`} tone="rose" icon={ShieldAlert} />
                   </div>
                   <div className="mt-6 flex gap-2">
                     {s.endTime ? (
@@ -224,7 +295,7 @@ function Reports() {
                       <button
                         onClick={() => handleStopTrackingInReports(s._id)}
                         disabled={stoppingId === s._id}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-800/50 disabled:cursor-not-allowed px-3 py-2.5 text-xs font-semibold text-white glow-red hover:brightness-110 transition-all animate-pulse"
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-800/50 disabled:cursor-not-allowed px-3 py-2.5 text-xs font-semibold text-white glow-red hover:brightness-110 transition-all"
                       >
                         {stoppingId === s._id ? (
                           <>
@@ -248,11 +319,22 @@ function Reports() {
   );
 }
 
-function Mini({ label, value, tone }: { label: string; value: string; tone: "emerald" | "gold" }) {
+function Mini({ label, value, tone, icon: Icon }: { label: string; value: string; tone: "emerald" | "gold" | "rose"; icon?: any }) {
   return (
-    <div className="rounded-xl border border-border bg-white/5 p-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={`mt-1 font-display text-lg ${tone === "emerald" ? "text-gradient-emerald" : "text-gradient-gold"}`}>{value}</div>
+    <div className="rounded-xl border border-border bg-white/5 p-2 flex flex-col justify-between min-h-[64px]">
+      <div className="flex items-center justify-between text-[9px] uppercase tracking-wider text-muted-foreground gap-1">
+        <span className="truncate">{label}</span>
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-60" />}
+      </div>
+      <div className={`mt-1.5 font-display text-sm font-semibold truncate ${
+        tone === "emerald"
+          ? "text-gradient-emerald"
+          : tone === "gold"
+            ? "text-gradient-gold"
+            : "text-gradient-rose"
+      }`}>{value}</div>
     </div>
   );
 }
+
+

@@ -51,7 +51,27 @@ function Analytics() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "live") return;
+    const hasActiveSession = !!localStorage.getItem("focusSessionId");
+    if (!hasActiveSession) return;
+
+    const id = setInterval(async () => {
+      const savedSessionId = localStorage.getItem("focusSessionId");
+      if (savedSessionId) {
+        try {
+          const reportData = await fetchSessionReport(savedSessionId);
+          setReport(reportData);
+        } catch (err) {
+          console.error("Failed to poll session report in analytics", err);
+        }
+      }
+    }, 3000);
+
+    return () => clearInterval(id);
+  }, [activeTab]);
 
   const getFilteredSessions = () => {
     const now = new Date();

@@ -9,24 +9,31 @@ const getSessionReport = async (req, res) => {
             sessionId,
         });
 
-        if (!logs.length) {
-            return res.status(404).json({
-                success: false,
-                message: "No focus data found",
-            });
-        }
-
         const totalFocusScore = logs.reduce(
             (sum, log) => sum + log.focusScore,
             0
         );
 
-        const averageFocusScore =
-            totalFocusScore / logs.length;
+        const averageFocusScore = logs.length > 0
+            ? totalFocusScore / logs.length
+            : 0;
 
-        const distractionCount = logs.filter(
-            (log) => log.lookingAway === true
-        ).length;
+        // Calculate distinct distraction episodes (stepped away + looked away)
+        const sortedLogs = [...logs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        let distractionCount = 0;
+        let wasDistracted = false;
+
+        for (let i = 0; i < sortedLogs.length; i++) {
+            const isDistractedOrMissing = sortedLogs[i].lookingAway === true || sortedLogs[i].faceDetected === false;
+            if (isDistractedOrMissing) {
+                if (!wasDistracted) {
+                    distractionCount++;
+                    wasDistracted = true;
+                }
+            } else {
+                wasDistracted = false;
+            }
+        }
 
         res.status(200).json({
             success: true,

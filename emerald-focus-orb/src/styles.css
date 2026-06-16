@@ -200,3 +200,15 @@
   background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
   background-size: 3px 3px;
 }
+
+@utility text-gradient-rose {
+  background: linear-gradient(135deg, #FDA4AF 0%, #F43F5E 50%, #BE123C 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glow-red {
+  box-shadow: 0 0 0 1px rgba(220,38,38,0.4), 0 10px 40px -10px rgba(220,38,38,0.55);
+}
+
